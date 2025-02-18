@@ -14,67 +14,69 @@ OPENAI_API_KEY: str = 'sk-proj-Zq5gc9gJtkXppKIdNFDFY6yOMyFSj9LflZOvmVlIidWwRcn6p
 
 QDRANT_CLIENT = QdrantClient(url=QDRANT_URL, api_key=QDRANT_KEY)
 EMBEDDINGS = OpenAIEmbeddings(model="text-embedding-ada-002",api_key=OPENAI_API_KEY)
-DENSE_EMBEDDINGS_MODEL = TextEmbedding("sentence-transformers/all-MiniLM-L6-v2")
-SPARSE_EMBEDDINGS_MODEL = SparseTextEmbedding("Qdrant/bm25")
+# DENSE_EMBEDDINGS_MODEL = TextEmbedding("sentence-transformers/all-MiniLM-L6-v2")
+# SPARSE_EMBEDDINGS_MODEL = SparseTextEmbedding("Qdrant/bm25")
 
-COLLECTION_NAME = 'noemi'
+COLLECTION_NAME = 'livro_collection'
 
-document_path = 'mais-esperto-que-o-diabo.pdf'
+# # 'noemi'
 
-doc_converter = DocumentConverter()
-document_text = doc_converter.convert(document_path ).document.export_to_text()
+# document_path = 'mais-esperto-que-o-diabo.pdf'
 
-dense_embeddings = DENSE_EMBEDDINGS_MODEL.passage_embed(document_text)
-print(len(dense_embeddings))
+# doc_converter = DocumentConverter()
+# document_text = doc_converter.convert(document_path ).document.export_to_text()
+
+# dense_embeddings = DENSE_EMBEDDINGS_MODEL.passage_embed(document_text)
+# print(len(dense_embeddings))
 
 
-# def handle(
-#     agent_id: str ,
-#     document_path: str,
-# ):    
-    doc_converter = DocumentConverter()
-    document_text = doc_converter.convert(document_path ).document.export_to_text()
+# # def handle(
+# #     agent_id: str ,
+# #     document_path: str,
+# # ):    
+#     doc_converter = DocumentConverter()
+#     document_text = doc_converter.convert(document_path ).document.export_to_text()
 
-#     text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-#     texts = text_splitter.split_text(document_text)
+# #     text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+# #     texts = text_splitter.split_text(document_text)
     
-#     # rececreate collection
-
-    
-#     QdrantVectorStore.from_texts(
-#         texts=texts,
-#         embedding=EMBEDDINGS,
-#         url=QDRANT_URL,
-#         api_key=QDRANT_KEY,
-#         collection_name=COLLECTION_NAME,
-#     )
+# #     # rececreate collection
 
     
-# def query(search: str):
-#     # Criar embeddings para a consulta
-#     search_embedding = EMBEDDINGS.embed_query(search)
+# #     QdrantVectorStore.from_texts(
+# #         texts=texts,
+# #         embedding=EMBEDDINGS,
+# #         url=QDRANT_URL,
+# #         api_key=QDRANT_KEY,
+# #         collection_name=COLLECTION_NAME,
+# #     )
 
-#     # Inicializar a coleção no Qdrant com `embedding_function`
-#     vector_store = Qdrant(
-#         client=QdrantClient(url=QDRANT_URL, api_key=QDRANT_KEY),
-#         collection_name="mais-esperto-que-o-diabo-02",
-#         embeddings=EMBEDDINGS  # O correto é passar isso!
-#     )
+    
+def query(search: str):
+    # Criar embeddings para a consulta
+    search_embedding = EMBEDDINGS.embed_query(search)
 
-#     # Fazer a busca por similaridade
-#     results = vector_store.similarity_search_by_vector(
-#         search_embedding, k=3  # Retorna os 5 resultados mais próximos
-#     )
+    # Inicializar a coleção no Qdrant com `embedding_function`
+    vector_store = Qdrant(
+        client=QdrantClient(url=QDRANT_URL, api_key=QDRANT_KEY),
+        collection_name="mais-esperto-que-o-diabo-02",
+        embeddings=EMBEDDINGS  # O correto é passar isso!
+    )
 
-#     return results
+    # Fazer a busca por similaridade
+    results = vector_store.similarity_search_by_vector(
+        search_embedding, k=3  # Retorna os 5 resultados mais próximos
+    )
+
+    return results
 
 # handle(
 #     agent_id="agent-01",
 #     document_path='mais-esperto-que-o-diabo.pdf')
 
 # # Exemplo de uso
-# resultados = query("Como superar o medo?")
-# for i, r in enumerate(resultados):
-#     print(f"{i+1}. {r.page_content}\n\n")
-#     print("---------------------------------------------------"*2)
-#     print("\n\n")
+resultados = query(search="Como superar o medo?")
+for i, r in enumerate(resultados):
+    print(f"{i+1}. {r.page_content}\n\n")
+    print("---------------------------------------------------"*2)
+    print("\n\n")
