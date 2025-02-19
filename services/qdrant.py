@@ -1,9 +1,8 @@
-from typing import Any, List
-from IPython import embed
+from typing import  List
 from qdrant_client import QdrantClient,models
 from sentence_transformers import SentenceTransformer
 from interfaces.qdrant_interface import DocumentInterface, ResponseInterface
-from settings import QDRANT_COLLECTION, QDRANT_KEY, QDRANT_URL
+from settings import  QDRANT_KEY, QDRANT_URL
 
 
 
@@ -27,10 +26,10 @@ class QdrantService:
     def insert_documents(self, collection_name: str, documents: List[DocumentInterface]) -> None:
         documents.sort(key=lambda x: x.metadata.index)
     
-        points = []  # Lista para armazenar os pontos que serão inseridos no Qdrant
+        points = [] 
 
         for doc in documents:
-            embedding = self.embedding_model.encode(doc.content).tolist()  # Gerando embedding
+            embedding = self.embedding_model.encode(doc.content).tolist() 
             payload = {
                 "index": doc.metadata.index,
                 "agent_id": doc.metadata.agent_id,
@@ -47,20 +46,7 @@ class QdrantService:
 
         self.client.upsert(collection_name=collection_name, points=points)
             
-    # search_results = self.client.search(
-        # collection_name=collection_name,
-        # query_vector=("text_embedding", query_embedding),  # vetor com nome definido
-        # limit=limit,
-        # query_filter=models.Filter(  # use "filter" em vez de "query_filter"
-        #     must=[
-        #         models.FieldCondition(
-        #             key="agent_id",
-        #             match=models.MatchValue(value=agent_id)
-        #         )
-        #     ]
-        # )
-        # )
-            
+
     def query(self, collection_name: str, query: str, agent_id: int, limit: int = 3)->list[ResponseInterface]:
         
         query_embedding = self.embedding_model.encode(query).tolist()  

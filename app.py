@@ -1,10 +1,7 @@
-import uuid
-
-from sympy import Q
 from jobs.upload_qdrant_job import upload_qdrant_job
 from fastapi import BackgroundTasks, FastAPI, UploadFile, File, Form
 
-from services.extract import ExtractService
+
 from services.qdrant import QdrantService, ResponseInterface
 
 app = FastAPI()
@@ -17,7 +14,7 @@ def start_job(
     agent_id: str = Form(default=...),
     file: UploadFile = File(default=...),
     background_tasks: BackgroundTasks = None # type: ignore
-):# -> dict[str, Any]:# -> dict[str, Any]:
+):
  
     file_bytes: bytes = file.file.read()
     background_tasks.add_task(upload_qdrant_job, job_id=job_id, agent_id=agent_id, file=file_bytes)
