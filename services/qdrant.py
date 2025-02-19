@@ -47,18 +47,28 @@ class QdrantService:
 
         self.client.upsert(collection_name=collection_name, points=points)
             
-    def query(self, collection_name: str, query: str, agent_id: str, limit: int = 3)->list[ResponseInterface]:
-        print(
-            collection_name,
-            query,
-            agent_id,
-            limit
-        )
+    # search_results = self.client.search(
+        # collection_name=collection_name,
+        # query_vector=("text_embedding", query_embedding),  # vetor com nome definido
+        # limit=limit,
+        # query_filter=models.Filter(  # use "filter" em vez de "query_filter"
+        #     must=[
+        #         models.FieldCondition(
+        #             key="agent_id",
+        #             match=models.MatchValue(value=agent_id)
+        #         )
+        #     ]
+        # )
+        # )
+            
+    def query(self, collection_name: str, query: str, agent_id: int, limit: int = 3)->list[ResponseInterface]:
+        
         query_embedding = self.embedding_model.encode(query).tolist()  
 
-        search_results: List[models.ScoredPoint] = self.client.search(
+        search_result = self.client.query_points(
             collection_name=collection_name,
-            query_vector=("text_embedding", query_embedding ),
+            query=query_embedding,
+            using="text_embedding",
             limit=limit,
             query_filter=models.Filter(
                 must=[
@@ -69,15 +79,19 @@ class QdrantService:
                 ]
             )
         )
+        
+
+        
+       
 
         response: List[ResponseInterface] = [
             ResponseInterface(
-                id=result.id,
-                agent_id=result.payload["agent_id"],
+                id=str(result.id),
+                agent_id=str(result.payload["agent_id"]),
                 page_content=result.payload["content"],
                 similarity=round(result.score*100, 2)
             )
-            for result in search_results
+            for result in search_result.points
         ]
-
         return response
+

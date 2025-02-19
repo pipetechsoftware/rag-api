@@ -30,11 +30,14 @@ def start_job(
 @app.get(path="/search")
 def search(
     query: str,
-    agent_id: str,
+    agent_id: int,
     limit: int = 3,
     ) -> list[ResponseInterface]:
+    agent_id = int(agent_id)
+    limit = int(limit)
+    
     return qdrant_service.query(
         collection_name="teste_19_02",
         query=query, agent_id=agent_id, limit=limit)
- 
+    
 
