@@ -8,7 +8,7 @@ from langchain_text_splitters import CharacterTextSplitter
 class ExtractService:
     def __init__(self) -> None:
         self.converter = DocumentConverter()
-        self.text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+        self.text_splitter = CharacterTextSplitter(chunk_size=512, chunk_overlap=150)
 
     def extract_data(self,  source: bytes) -> str:
         with tempfile.NamedTemporaryFile(delete=False) as tmp:
