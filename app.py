@@ -1,5 +1,8 @@
+# app.py
+
 from typing import Optional
-from fastapi import BackgroundTasks, FastAPI, UploadFile, File, Form, HTTPException
+
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 
 from jobs.upload_qdrant_job import upload_qdrant_job
 from services.qdrant import QdrantService, ResponseInterface
@@ -11,6 +14,7 @@ qdrant_service = QdrantService()
 
 @app.post(path="/create-collection")
 def create_collection(collection_name: str = Form(...)):
+    # Cria a coleção com size=768
     return qdrant_service.create_collection(collection_name=collection_name)
 
 
@@ -20,10 +24,12 @@ def start_job(
     metadata: str = Form(...),
     agent_id: int = Form(...),
     file: UploadFile = File(...),
-    background_tasks: BackgroundTasks = None  # type: ignore
+    background_tasks: BackgroundTasks = None,  # type: ignore
 ):
     file_bytes: bytes = file.file.read()
     agent_id = int(agent_id)
+
+    # Inicia a tarefa em background para extrair e inserir no Qdrant
     background_tasks.add_task(
         upload_qdrant_job,
         media_id=media_id,
@@ -31,10 +37,10 @@ def start_job(
         agent_id=agent_id,
         file=file_bytes,
     )
-    
+
     return {
         "status": 200,
-        "response": "Estamos processando o arquivo, te notificaremos quando terminar!"
+        "response": "Estamos processando o arquivo. Notificaremos quando terminar!",
     }
 
 
@@ -43,18 +49,18 @@ def search(
     query: str,
     agent_id: Optional[int] = None,
     media_id: Optional[str] = None,
-    limit: int = 3,
+    limit: int = 5,  # Por padrão, retornamos 5 resultados
 ) -> list[ResponseInterface]:
     if agent_id:
         agent_id = int(agent_id)
     limit = int(limit)
-    
+
     return qdrant_service.query(
         collection_name=QDRANT_COLLECTION,
         query=query,
         agent_id=agent_id,
         limit=limit,
-        media_id=media_id
+        media_id=media_id,
     )
 
 
@@ -63,21 +69,18 @@ def delete_vectors(
     agent_id: Optional[int] = None,
     media_id: Optional[str] = None,
 ):
-    
-    
     if (agent_id is None) and (media_id is None):
-        raise HTTPException(status_code=400, detail="Informe ao menos um filtro: agent_id ou media_id.")
-    
+        raise HTTPException(
+            status_code=400, detail="Informe ao menos um filtro: agent_id ou media_id."
+        )
+
     deleted = qdrant_service.delete_vectors(
-        collection_name=QDRANT_COLLECTION,
-        agent_id=agent_id,
-        media_id=media_id
+        collection_name=QDRANT_COLLECTION, agent_id=agent_id, media_id=media_id
     )
 
     if not deleted:
-        raise HTTPException(status_code=404, detail="Não existe esse dado na vector store.")
-    
-    return {
-        "status": 200,
-        "response": "Vetores deletados com sucesso."
-    }
+        raise HTTPException(
+            status_code=404, detail="Não existem dados correspondentes na vector store."
+        )
+
+    return {"status": 200, "response": "Vetores deletados com sucesso."}
