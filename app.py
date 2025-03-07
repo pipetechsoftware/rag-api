@@ -1,5 +1,3 @@
-# app.py
-
 from typing import Optional
 
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
@@ -14,7 +12,7 @@ qdrant_service = QdrantService()
 
 @app.post(path="/create-collection")
 def create_collection(collection_name: str = Form(...)):
-    # Cria a coleção com size=768
+
     return qdrant_service.create_collection(collection_name=collection_name)
 
 
@@ -24,12 +22,11 @@ def start_job(
     metadata: str = Form(...),
     agent_id: int = Form(...),
     file: UploadFile = File(...),
-    background_tasks: BackgroundTasks = None,  # type: ignore
+    background_tasks: BackgroundTasks = None,
 ):
     file_bytes: bytes = file.file.read()
     agent_id = int(agent_id)
 
-    # Inicia a tarefa em background para extrair e inserir no Qdrant
     background_tasks.add_task(
         upload_qdrant_job,
         media_id=media_id,
@@ -49,7 +46,7 @@ def search(
     query: str,
     agent_id: Optional[int] = None,
     media_id: Optional[str] = None,
-    limit: int = 5,  # Por padrão, retornamos 5 resultados
+    limit: int = 5,
 ) -> list[ResponseInterface]:
     if agent_id:
         agent_id = int(agent_id)
