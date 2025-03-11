@@ -14,25 +14,24 @@ API_URL = API_WEBHOOK + "/api/webhooks/knowledge-base"
 
 
 def upload_qdrant_job(media_id: str, metadata: str, agent_id: int, file: bytes):
-
     extracted_docs: List[str] = extract.run(source=file)
 
-    documents: List[DocumentInterface] = [
-        DocumentInterface(
-            content=doc,
-            metadata=MetadataInterface(
-                index=i, agent_id=agent_id, media_id=media_id, metadata=metadata
-            ),
+    documents: List[DocumentInterface] = []
+    for i, doc_text in enumerate(extracted_docs):
+        documents.append(
+            DocumentInterface(
+                content=doc_text,
+                metadata=MetadataInterface(
+                    index=i, agent_id=agent_id, media_id=media_id, metadata=metadata
+                ),
+            )
         )
-        for i, doc in enumerate(extracted_docs)
-    ]
 
     response = qdrant_service.insert_documents(
         collection_name=QDRANT_COLLECTION, documents=documents
     )
 
     if not response:
-
         request(
             "POST",
             API_URL,
