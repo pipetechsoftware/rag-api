@@ -102,7 +102,7 @@ python-pptx==1.0.2
 pytz==2025.1
 PyYAML==6.0.2
 pyzmq==26.2.1
-qdrant-client @ git+https://github.com/qdrant/qdrant-client.git@eaee466fca445acff9b54e555b4fce3ef2a0f108
+qdrant-client==1.13.3
 referencing==0.36.2
 regex==2024.11.6
 requests==2.32.3
