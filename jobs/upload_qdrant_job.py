@@ -31,7 +31,8 @@ def upload_qdrant_job(media_id: str, metadata: str, agent_id: int, file: bytes):
         collection_name=QDRANT_COLLECTION, documents=documents
     )
 
-    if not response:
+    if response is not True: 
+        error_message = response if isinstance(response, str) else "Erro desconhecido"
         request(
             "POST",
             API_URL,
@@ -40,6 +41,7 @@ def upload_qdrant_job(media_id: str, metadata: str, agent_id: int, file: bytes):
                 "mediaId": media_id,
                 "agentId": agent_id,
                 "statusCode": 400,
+                "message": error_message,
             },
         )
         return False

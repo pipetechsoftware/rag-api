@@ -85,9 +85,8 @@ class QdrantService:
             self.client.upsert(collection_name=collection_name, points=points)
             return True
 
-        except Exception:
-
-            return False
+        except Exception as e:
+            return str(e)
 
     def query(
         self,
