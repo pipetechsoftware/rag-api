@@ -21,8 +21,8 @@ class QdrantService:
 
     def create_collection(self, collection_name: str) -> None:
         """
-        Cria (ou recria) a coleção sem usar payload_schema,
-        pois Qdrant 1.x não suporta text indexing nativo.
+        Cria (ou recria) a coleção e adiciona índices de payload
+        para permitir filtros por agent_id e media_id.
         """
 
         collections = self.client.get_collections().collections
@@ -37,6 +37,19 @@ class QdrantService:
                     size=768, distance=models.Distance.COSINE
                 )
             },
+        )
+
+        # 🔑 Criar índice para filtros
+        self.client.create_payload_index(
+            collection_name=collection_name,
+            field_name="agent_id",
+            field_schema=models.PayloadSchemaType.INTEGER,
+        )
+
+        self.client.create_payload_index(
+            collection_name=collection_name,
+            field_name="media_id",
+            field_schema=models.PayloadSchemaType.KEYWORD,
         )
 
     def insert_documents(
