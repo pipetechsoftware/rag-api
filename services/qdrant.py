@@ -110,53 +110,62 @@ class QdrantService:
         if agent_id is not None:
             must_conditions.append(
                 http_models.FieldCondition(
-                    key="agent_id", match=http_models.MatchValue(value=agent_id)
+                    key="agent_id",
+                    match=http_models.MatchValue(value=int(agent_id))
                 )
             )
         if media_id is not None:
             must_conditions.append(
                 http_models.FieldCondition(
-                    key="media_id", match=http_models.MatchValue(value=media_id)
+                    key="media_id",
+                    match=http_models.MatchValue(value=str(media_id))
                 )
             )
 
-        vector_search = self.client.query_points(
-            collection_name=collection_name,
-            query=query_embedding,
-            using="text_embedding",
-            limit=limit,
-            query_filter=(
-                http_models.Filter(must=must_conditions) if must_conditions else None
-            ),
-        )
-
-        vector_hits: List[ResponseInterface] = [
-            ResponseInterface(
-                id=str(result.id),
-                agent_id=str(result.payload.get("agent_id", None)),  # type: ignore
-                page_content=result.payload.get("content", ""),  # type: ignore
-                similarity=result.score,
+        try:
+            vector_search = self.client.query_points(
+                collection_name=collection_name,
+                query=query_embedding,
+                using="text_embedding",
+                limit=limit,
+                query_filter=(
+                    http_models.Filter(must=must_conditions) if must_conditions else None
+                ),
             )
-            for result in vector_search.points
-        ]
+            vector_hits: List[ResponseInterface] = [
+                ResponseInterface(
+                    id=str(result.id),
+                    agent_id=str(result.payload.get("agent_id", None)),
+                    page_content=result.payload.get("content", ""),
+                    similarity=result.score,
+                )
+                for result in vector_search.points
+            ]
+        except Exception as e:
+            print(f"[QdrantService.query] Erro na busca vetorial: {e}")
+            vector_hits = []
 
+        # 🔹 Busca lexical (string match local)
         lexical_limit = max(limit, 100)
-        lexical_search = self.client.query_points(
-            collection_name=collection_name,
-            query=[0.0] * 768,
-            using="text_embedding",
-            limit=lexical_limit,
-            query_filter=(
-                http_models.Filter(must=must_conditions) if must_conditions else None
-            ),
-        )
+        try:
+            lexical_search = self.client.query_points(
+                collection_name=collection_name,
+                query=[0.0] * 768,  # vetor "dummy"
+                using="text_embedding",
+                limit=lexical_limit,
+                query_filter=(
+                    http_models.Filter(must=must_conditions) if must_conditions else None
+                ),
+            )
+        except Exception as e:
+            print(f"[QdrantService.query] Erro na busca lexical: {e}")
+            lexical_search = http_models.QueryResponse(points=[])
 
         query_lower = query.lower()
         lexical_matches = []
         for point in lexical_search.points:
-            content = point.payload["content"].lower()  # type: ignore
+            content = point.payload.get("content", "").lower()  # type: ignore
             if query_lower in content:
-
                 lexical_matches.append(
                     ResponseInterface(
                         id=str(point.id),
@@ -166,24 +175,20 @@ class QdrantService:
                     )
                 )
 
+
         fused = {}
         for vh in vector_hits:
             fused[vh.id] = vh
-
         for lm in lexical_matches:
             if lm.id in fused:
-
-                if lm.similarity > fused[lm.id].similarity:
-                    fused[lm.id].similarity = lm.similarity
+                fused[lm.id].similarity = max(lm.similarity, fused[lm.id].similarity)
             else:
-
                 fused[lm.id] = lm
 
+        # Ordena por similaridade e limita
         all_results = list(fused.values())
         all_results.sort(key=lambda x: x.similarity, reverse=True)
-        final_results = all_results[:limit]
-
-        return final_results
+        return all_results[:limit]
 
     def delete_vectors(
         self,
