@@ -1,6 +1,5 @@
 import json
-from typing import List, Optional, Union
-
+from typing import List, Optional
 from httpx import request
 
 from interfaces.qdrant_interface import DocumentInterface, MetadataInterface
@@ -15,17 +14,15 @@ API_URL = API_WEBHOOK + "/api/webhooks/knowledge-base"
 
 
 def _maybe_parse_json_from_bytes(file_bytes: bytes) -> Optional[List[dict]]:
-    """
-    Tenta decodificar bytes como UTF-8 e carregar JSON.
-    Retorna uma lista de dicts (registros) ou None se não parecer JSON.
-    Aceita formatos:
-      - Lista de objetos: [ {...}, {...} ]
-      - Objeto com lista dentro: { "items": [ ... ] } (ou "data", "products", etc.)
-    """
+    """Tenta decodificar bytes como JSON. Se não conseguir, retorna None."""
+    text = None
     try:
-        text = file_bytes.decode("utf-8-sig")  # lida com BOM
+        text = file_bytes.decode("utf-8-sig")
     except UnicodeDecodeError:
-        return None
+        try:
+            text = file_bytes.decode("latin-1")
+        except UnicodeDecodeError:
+            return None
 
     s = text.strip()
     if not s or s[0] not in "[{":
@@ -37,10 +34,8 @@ def _maybe_parse_json_from_bytes(file_bytes: bytes) -> Optional[List[dict]]:
         return None
 
     if isinstance(data, list):
-        # Lista de registros
         return data
     if isinstance(data, dict):
-        # Tenta encontrar uma lista em chaves comuns
         for key in ("items", "data", "products", "records", "result"):
             value = data.get(key)
             if isinstance(value, list):
@@ -49,10 +44,7 @@ def _maybe_parse_json_from_bytes(file_bytes: bytes) -> Optional[List[dict]]:
 
 
 def _build_content_from_item(item: dict) -> str:
-    """
-    Monta um texto de conteúdo a partir de um item de produto/registro.
-    Tenta campos comuns em PT/EN. Se não achar, cria um resumo dos primeiros pares chave:valor.
-    """
+    """Monta texto amigável a partir de um item de JSON."""
     name = (
         item.get("nome")
         or item.get("titulo")
@@ -71,45 +63,34 @@ def _build_content_from_item(item: dict) -> str:
 
     if name or desc:
         content = f"{name} - {desc}".strip(" -")
-        if not content:
-            content = json.dumps(item, ensure_ascii=False)
-        return content
+        return content or json.dumps(item, ensure_ascii=False)
 
-    # fallback: sumariza alguns campos simples
+    # fallback: junta algumas chaves/valores
     pieces = []
     for k, v in list(item.items())[:8]:
-        if isinstance(v, (str, int, float, bool)) and k not in ("id_interno",):
+        if isinstance(v, (str, int, float, bool)):
             pieces.append(f"{k}: {v}")
-    if pieces:
-        return " | ".join(pieces)
-    return json.dumps(item, ensure_ascii=False)
+    return " | ".join(pieces) if pieces else json.dumps(item, ensure_ascii=False)
 
 
 def upload_qdrant_job(media_id: str, metadata: str, agent_id: int, file: bytes):
-    """
-    Ingestão no Qdrant:
-      - Se o conteúdo for JSON válido (bytes → utf-8 → json.loads), cria documentos direto.
-      - Caso contrário, usa o extrator (Docling) para PDF/DOCX/TXT etc.
-    """
     documents: List[DocumentInterface] = []
 
     try:
-        # Tenta JSON primeiro (funciona para .json e .txt)
+        # --- Tenta interpretar como JSON primeiro ---
         json_rows = _maybe_parse_json_from_bytes(file)
 
         if json_rows is not None:
-            # JSON reconhecido
+            print(f"[DEBUG] JSON detectado com {len(json_rows)} registros")
             for i, raw in enumerate(json_rows):
                 item = raw if isinstance(raw, dict) else {"value": raw}
-                content = _build_content_from_item(item)
                 documents.append(
                     DocumentInterface(
-                        content=content,
+                        content=_build_content_from_item(item),
                         metadata=MetadataInterface(
                             index=i,
                             agent_id=agent_id,
                             media_id=media_id,
-                            # Mantém como string (Pydantic espera str):
                             metadata=json.dumps(item, ensure_ascii=False),
                         ),
                     )
@@ -117,8 +98,24 @@ def upload_qdrant_job(media_id: str, metadata: str, agent_id: int, file: bytes):
 
         # --- Caso comum (usa Docling Extract) ---
         else:
-            # Não era JSON → usa o pipeline Docling normalmente
-            extracted_docs: List[str] = extract.run(source=file)
+            print("[DEBUG] Não detectado JSON, usando Docling para extrair")
+            try:
+                extracted_docs: List[str] = extract.run(source=file)
+            except Exception as e:
+                print(f"[ERROR] Docling falhou: {e}")
+                request(
+                    "POST",
+                    API_URL,
+                    json={
+                        "status": "failed",
+                        "mediaId": media_id,
+                        "agentId": agent_id,
+                        "statusCode": 415,
+                        "message": f"Arquivo não suportado pelo Docling: {str(e)}",
+                    },
+                )
+                return False
+
             for i, doc_text in enumerate(extracted_docs):
                 documents.append(
                     DocumentInterface(
@@ -132,13 +129,15 @@ def upload_qdrant_job(media_id: str, metadata: str, agent_id: int, file: bytes):
                     )
                 )
 
-        # Inserir no Qdrant
+        # --- Insere no Qdrant ---
         response = qdrant_service.insert_documents(
             collection_name=QDRANT_COLLECTION, documents=documents
         )
 
         if response is not True:
-            error_message = response if isinstance(response, str) else "Erro desconhecido"
+            error_message = (
+                response if isinstance(response, str) else "Erro desconhecido ao inserir no Qdrant"
+            )
             request(
                 "POST",
                 API_URL,
@@ -165,6 +164,7 @@ def upload_qdrant_job(media_id: str, metadata: str, agent_id: int, file: bytes):
         return True
 
     except Exception as e:
+        print(f"[ERROR] Erro inesperado: {e}")
         request(
             "POST",
             API_URL,
