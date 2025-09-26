@@ -14,7 +14,7 @@ API_URL = API_WEBHOOK + "/api/webhooks/knowledge-base"
 
 
 def _maybe_parse_json_from_bytes(file_bytes: bytes) -> Optional[List[dict]]:
-    """Tenta decodificar bytes como JSON. Se não conseguir, retorna None."""
+    """Tenta decodificar bytes como JSON e retorna uma lista de registros, se possível."""
     text = None
     try:
         text = file_bytes.decode("utf-8-sig")
@@ -24,22 +24,21 @@ def _maybe_parse_json_from_bytes(file_bytes: bytes) -> Optional[List[dict]]:
         except UnicodeDecodeError:
             return None
 
-    s = text.strip()
-    if not s or s[0] not in "[{":
-        return None
-
     try:
-        data = json.loads(s)
+        # tenta decodificar como JSON
+        data = json.loads(text)
     except json.JSONDecodeError:
         return None
 
     if isinstance(data, list):
         return data
+
     if isinstance(data, dict):
-        for key in ("items", "data", "products", "records", "result"):
-            value = data.get(key)
+        # tenta pegar a primeira chave que contenha lista
+        for key, value in data.items():
             if isinstance(value, list):
                 return value
+
     return None
 
 
