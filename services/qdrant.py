@@ -10,10 +10,28 @@ from interfaces.qdrant_interface import DocumentInterface, ResponseInterface
 from settings import QDRANT_KEY, QDRANT_URL
 
 
+def _normalize_qdrant_url(raw: str) -> str:
+    """
+    Aceita:
+      - https://host:port
+      - http://host:port
+      - host:port (comum em painéis de env)
+    """
+    url = (raw or "").strip()
+    if not url:
+        return url
+    if "://" not in url:
+        # Qdrant Cloud normalmente exige HTTPS.
+        url = f"https://{url}"
+    return url
+
+
 class QdrantService:
     def __init__(self) -> None:
 
-        self.client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_KEY)
+        qdrant_url = _normalize_qdrant_url(QDRANT_URL)
+        # `check_version=False` evita warning/erros quando a infra bloqueia o endpoint de versão.
+        self.client = QdrantClient(url=qdrant_url, api_key=QDRANT_KEY, check_version=False)
 
         self.embedding_model = SentenceTransformer(
             "sentence-transformers/all-mpnet-base-v2", device="cpu"
