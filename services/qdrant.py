@@ -30,8 +30,14 @@ class QdrantService:
     def __init__(self) -> None:
 
         qdrant_url = _normalize_qdrant_url(QDRANT_URL)
-        # `check_version=False` evita warning/erros quando a infra bloqueia o endpoint de versão.
-        self.client = QdrantClient(url=qdrant_url, api_key=QDRANT_KEY, check_version=False)
+        # Algumas versões do `qdrant-client` não aceitam `check_version` no construtor.
+        # Fazemos fallback para manter compatibilidade.
+        try:
+            self.client = QdrantClient(
+                url=qdrant_url, api_key=QDRANT_KEY, check_version=False
+            )
+        except TypeError:
+            self.client = QdrantClient(url=qdrant_url, api_key=QDRANT_KEY)
 
         self.embedding_model = SentenceTransformer(
             "sentence-transformers/all-mpnet-base-v2", device="cpu"
