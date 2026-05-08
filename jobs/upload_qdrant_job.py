@@ -6,7 +6,7 @@ from httpx import request
 
 from interfaces.qdrant_interface import DocumentInterface, MetadataInterface
 from services.extract import ExtractService
-from services.qdrant import QdrantService
+from services.qdrant import MSG_QDRANT_UNREACHABLE, QdrantService
 from settings import API_WEBHOOK, QDRANT_COLLECTION
 
 logger = logging.getLogger(__name__)
@@ -153,7 +153,22 @@ def upload_qdrant_job(media_id: str, metadata: str, agent_id: int, file: bytes):
 
         if response is not True:
             error_message = response if isinstance(response, str) else "Erro desconhecido ao inserir no Qdrant"
-            logger.error(f"Inserção no Qdrant falhou: {error_message}")
+            # Mesma mensagem = cluster/URL (evita ERROR duplicado e stack ruidoso já tratados em services.qdrant)
+            if error_message == MSG_QDRANT_UNREACHABLE or (
+                isinstance(error_message, str) and error_message.startswith("Não foi possível falar com o Qdrant")
+            ):
+                logger.warning(
+                    "Ingest KB: Qdrant indisponível ou URL/key incorretos | media_id=%s agent_id=%s",
+                    media_id,
+                    agent_id,
+                )
+            else:
+                logger.error(
+                    "Ingest KB: falha ao inserir no Qdrant | media_id=%s agent_id=%s | %s",
+                    media_id,
+                    agent_id,
+                    error_message[:2000],
+                )
             request(
                 "POST",
                 API_URL,

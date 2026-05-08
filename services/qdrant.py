@@ -42,6 +42,34 @@ def _format_qdrant_error(e: Exception) -> str:
     return " | ".join(parts)
 
 
+def _is_wrong_http_endpoint(e: Exception) -> bool:
+    """
+    Resposta típica quando a URL não é o REST do Qdrant (proxy/ingress errado, host offline, etc.).
+    Nesse caso não faz sentido traceback ERROR em loop.
+    """
+    code = getattr(e, "status_code", None)
+    if code != 404:
+        return False
+    raw = getattr(e, "content", b"") or b""
+    if isinstance(raw, memoryview):
+        raw = raw.tobytes()
+    if isinstance(raw, (bytes, bytearray)):
+        blob = bytes(raw)[:2000].decode("utf-8", errors="replace").lower().strip()
+    else:
+        blob = str(raw).lower().strip()
+    # Resposta JSON 404 do próprio Qdrant (ex.: coleção) — tratar como erro “real”, não endpoint errado.
+    if blob.startswith("{") or blob.startswith("["):
+        return False
+    # HTML/texto genérico de proxy — não é o REST do Qdrant.
+    return "page not found" in blob
+
+
+MSG_QDRANT_UNREACHABLE = (
+    "Não foi possível falar com o Qdrant (HTTP 404): verifique se o cluster está no ar e se "
+    "QDRANT_URL/https e QDRANT_KEY correspondem ao cluster (ex.: https://….cloud.qdrant.io:6333, sem path extra)."
+)
+
+
 class QdrantService:
     def __init__(self) -> None:
 
@@ -108,13 +136,22 @@ class QdrantService:
             logger.info("Coleção '%s' criada com sucesso.", collection_name)
             return None
         except Exception as e:
+            if _is_wrong_http_endpoint(e):
+                logger.warning(
+                    "Qdrant inacessível ou QDRANT_URL não aponta para a API REST do cluster "
+                    "(collection=%s). %s",
+                    collection_name,
+                    MSG_QDRANT_UNREACHABLE,
+                )
+                return MSG_QDRANT_UNREACHABLE
+            det = _format_qdrant_error(e)
             logger.error(
                 "Falha ao verificar/criar coleção '%s': %s",
                 collection_name,
-                _format_qdrant_error(e),
+                det,
                 exc_info=True,
             )
-            return _format_qdrant_error(e)
+            return det
 
     def create_collection(self, collection_name: str) -> None:
         """
@@ -139,10 +176,7 @@ class QdrantService:
         try:
             setup_err = self.ensure_collection_exists(collection_name)
             if setup_err:
-                return (
-                    f"{setup_err}. Dica: corpo '404 page not found' costuma indicar "
-                    "QDRANT_URL apontando para outro serviço (não o cluster Qdrant). Verifique host, porta 6333 e https."
-                )
+                return setup_err
 
             documents.sort(key=lambda x: x.metadata.index)
 
@@ -183,6 +217,14 @@ class QdrantService:
             return True
 
         except Exception as e:
+            if _is_wrong_http_endpoint(e):
+                logger.warning(
+                    "Upsert: Qdrant inacessível ou URL incorreta | collection=%s | docs=%s | %s",
+                    collection_name,
+                    len(documents),
+                    MSG_QDRANT_UNREACHABLE,
+                )
+                return MSG_QDRANT_UNREACHABLE
             detail = _format_qdrant_error(e)
             logger.error(
                 "Upsert Qdrant falhou | collection=%s | docs=%s | %s",
@@ -191,10 +233,7 @@ class QdrantService:
                 detail,
                 exc_info=True,
             )
-            return (
-                f"{detail}. Se a resposta for texto '404 page not found', o HTTP não é o "
-                "Qdrant (confira QDRANT_URL no deploy: deve ser https://<cluster>:6333 sem path extra)."
-            )
+            return detail
 
     def query(
         self,
