@@ -1,6 +1,7 @@
 from typing import Optional
 
 import os
+from datetime import datetime, timezone
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 
 from jobs.upload_qdrant_job import upload_qdrant_job
@@ -15,6 +16,24 @@ app = FastAPI(
     openapi_url=os.getenv("OPENAPI_URL", "/openapi.json"),
 )
 qdrant_service = QdrantService()
+
+
+@app.get("/")
+def health_root():
+    return {
+        "status": "ok",
+        "service": "rag-api",
+        "time": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@app.get("/health")
+def health():
+    return {
+        "status": "ok",
+        "service": "rag-api",
+        "time": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 @app.post(path="/create-collection")
