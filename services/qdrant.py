@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import uuid
 import warnings
 from typing import List, Optional
@@ -9,6 +10,8 @@ from sentence_transformers import SentenceTransformer
 
 from interfaces.qdrant_interface import DocumentInterface, ResponseInterface
 from settings import QDRANT_KEY, QDRANT_URL
+
+logger = logging.getLogger(__name__)
 
 
 def _normalize_qdrant_url(raw: str) -> str:
@@ -25,6 +28,18 @@ def _normalize_qdrant_url(raw: str) -> str:
         # Qdrant Cloud normalmente exige HTTPS.
         url = f"https://{url}"
     return url
+
+
+def _format_qdrant_error(e: Exception) -> str:
+    """Detalhes úteis para logs e webhook; evita depender só de str(e)."""
+    parts = [str(e)]
+    for attr in ("status_code", "reason_phrase", "content"):
+        if hasattr(e, attr):
+            val = getattr(e, attr)
+            if attr == "content" and isinstance(val, (bytes, bytearray)):
+                val = bytes(val)[:800].decode("utf-8", errors="replace")
+            parts.append(f"{attr}={val!r}")
+    return " | ".join(parts)
 
 
 class QdrantService:
@@ -51,6 +66,55 @@ class QdrantService:
         self.embedding_model = SentenceTransformer(
             "sentence-transformers/all-mpnet-base-v2", device="cpu"
         )
+        logger.info(
+            "Cliente Qdrant inicializado (base URL efetiva: %s)",
+            qdrant_url.rstrip("/"),
+        )
+
+    def _create_collection_and_indexes(self, collection_name: str) -> None:
+        self.client.create_collection(
+            collection_name=collection_name,
+            vectors_config={
+                "text_embedding": models.VectorParams(
+                    size=768, distance=models.Distance.COSINE
+                )
+            },
+        )
+        self.client.create_payload_index(
+            collection_name=collection_name,
+            field_name="agent_id",
+            field_schema=models.PayloadSchemaType.INTEGER,
+        )
+        self.client.create_payload_index(
+            collection_name=collection_name,
+            field_name="media_id",
+            field_schema=models.PayloadSchemaType.KEYWORD,
+        )
+
+    def ensure_collection_exists(self, collection_name: str) -> Optional[str]:
+        """
+        Garante que a coleção exista antes do upsert.
+        Retorna mensagem de erro ou None se OK.
+        """
+        try:
+            names = [c.name for c in self.client.get_collections().collections]
+            if collection_name in names:
+                return None
+            logger.warning(
+                "Coleção '%s' não existe no Qdrant; criando automaticamente.",
+                collection_name,
+            )
+            self._create_collection_and_indexes(collection_name)
+            logger.info("Coleção '%s' criada com sucesso.", collection_name)
+            return None
+        except Exception as e:
+            logger.error(
+                "Falha ao verificar/criar coleção '%s': %s",
+                collection_name,
+                _format_qdrant_error(e),
+                exc_info=True,
+            )
+            return _format_qdrant_error(e)
 
     def create_collection(self, collection_name: str) -> None:
         """
@@ -63,27 +127,7 @@ class QdrantService:
         if existing:
             self.client.delete_collection(collection_name=collection_name)
 
-        self.client.create_collection(
-            collection_name=collection_name,
-            vectors_config={
-                "text_embedding": models.VectorParams(
-                    size=768, distance=models.Distance.COSINE
-                )
-            },
-        )
-
-        # 🔑 Criar índice para filtros
-        self.client.create_payload_index(
-            collection_name=collection_name,
-            field_name="agent_id",
-            field_schema=models.PayloadSchemaType.INTEGER,
-        )
-
-        self.client.create_payload_index(
-            collection_name=collection_name,
-            field_name="media_id",
-            field_schema=models.PayloadSchemaType.KEYWORD,
-        )
+        self._create_collection_and_indexes(collection_name)
 
     def insert_documents(
         self, collection_name: str, documents: List[DocumentInterface]
@@ -93,6 +137,13 @@ class QdrantService:
         deduplicando dentro da mesma chamada (via hash do conteúdo).
         """
         try:
+            setup_err = self.ensure_collection_exists(collection_name)
+            if setup_err:
+                return (
+                    f"{setup_err}. Dica: corpo '404 page not found' costuma indicar "
+                    "QDRANT_URL apontando para outro serviço (não o cluster Qdrant). Verifique host, porta 6333 e https."
+                )
+
             documents.sort(key=lambda x: x.metadata.index)
 
             seen_hashes = set()
@@ -132,7 +183,18 @@ class QdrantService:
             return True
 
         except Exception as e:
-            return str(e)
+            detail = _format_qdrant_error(e)
+            logger.error(
+                "Upsert Qdrant falhou | collection=%s | docs=%s | %s",
+                collection_name,
+                len(documents),
+                detail,
+                exc_info=True,
+            )
+            return (
+                f"{detail}. Se a resposta for texto '404 page not found', o HTTP não é o "
+                "Qdrant (confira QDRANT_URL no deploy: deve ser https://<cluster>:6333 sem path extra)."
+            )
 
     def query(
         self,

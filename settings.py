@@ -11,8 +11,10 @@ def _clean_env(value: str) -> str:
     """
     Sanitiza valores vindos do ambiente/.env.
     É comum `.env` ter valores com aspas ('...' / "..."), o que quebra URLs/keys.
+    Remove também quebras de linha (copy/paste do EasyPanel / secrets).
     """
     v = (value or "").strip()
+    v = v.replace("\r", "").replace("\n", "").strip()
     if (len(v) >= 2) and ((v[0] == v[-1]) and v[0] in ("'", '"')):
         v = v[1:-1].strip()
     return v
