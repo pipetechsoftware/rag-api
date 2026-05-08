@@ -1,12 +1,19 @@
 from typing import Optional
 
+import os
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 
 from jobs.upload_qdrant_job import upload_qdrant_job
 from services.qdrant import QdrantService, ResponseInterface
 from settings import QDRANT_COLLECTION
 
-app = FastAPI()
+app = FastAPI(
+    title="RAG API",
+    root_path=os.getenv("ROOT_PATH", ""),
+    docs_url=os.getenv("DOCS_URL", "/docs"),
+    redoc_url=os.getenv("REDOC_URL", "/redoc"),
+    openapi_url=os.getenv("OPENAPI_URL", "/openapi.json"),
+)
 qdrant_service = QdrantService()
 
 
