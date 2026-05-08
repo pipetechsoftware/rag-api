@@ -1,5 +1,6 @@
 import hashlib
 import uuid
+import warnings
 from typing import List, Optional
 
 from qdrant_client import QdrantClient, models
@@ -37,7 +38,15 @@ class QdrantService:
                 url=qdrant_url, api_key=QDRANT_KEY, check_version=False
             )
         except TypeError:
-            self.client = QdrantClient(url=qdrant_url, api_key=QDRANT_KEY)
+            # Algumas versões não aceitam `check_version` (ou repassam o kw para o httpx e quebram).
+            # O client ainda funciona; só não consulta a versão do servidor na inicialização.
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message=r"Failed to obtain server version.*",
+                    category=UserWarning,
+                )
+                self.client = QdrantClient(url=qdrant_url, api_key=QDRANT_KEY)
 
         self.embedding_model = SentenceTransformer(
             "sentence-transformers/all-mpnet-base-v2", device="cpu"
